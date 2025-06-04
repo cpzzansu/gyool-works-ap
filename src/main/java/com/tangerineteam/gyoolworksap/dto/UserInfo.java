@@ -10,4 +10,6 @@ public class UserInfo {
     private String id;
     private String name;
     private String password;
+    private String email;
+    private String confirmNum;
 }
