@@ -35,10 +35,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             Authentication authentication = jwtProvider.getAuthentication(token);
             //SecurityContext에 저장
             SecurityContextHolder.getContext().setAuthentication(authentication);
-
-            //레디스 저장
         }
-
+        // 유효하지 않으면 401
         filterChain.doFilter(request, response);
 
     }

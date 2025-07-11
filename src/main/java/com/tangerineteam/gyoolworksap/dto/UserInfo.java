@@ -14,5 +14,6 @@ public class UserInfo {
     private String name;
     private String password;
     private String email;
+    private String role;
     private String confirmNum;
 }

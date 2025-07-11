@@ -20,9 +20,10 @@ public class UserController {
     @Autowired
     private UserService userService;
 
+
+    //회원가입
     @PostMapping("/join")
     public ResponseEntity<?> join(@RequestBody UserInfo user) {
-        log.info(user.toString());
 
         userService.addUser(user);
         return ResponseEntity.ok("");
