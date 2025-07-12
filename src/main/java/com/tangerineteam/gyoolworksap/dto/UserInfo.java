@@ -16,4 +16,8 @@ public class UserInfo {
     private String email;
     private String role;
     private String confirmNum;
+    private String auth;
+    private String approvalStatus;
+    private String companyId;
+
 }
