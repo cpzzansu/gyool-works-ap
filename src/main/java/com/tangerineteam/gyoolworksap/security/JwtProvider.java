@@ -1,21 +1,26 @@
 package com.tangerineteam.gyoolworksap.security;
 
 
+import com.tangerineteam.gyoolworksap.dao.RedisTokenDao;
 import com.tangerineteam.gyoolworksap.dto.JwtToken;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
 import java.security.Key;
+import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -26,14 +31,17 @@ public class JwtProvider {
     @Value("${app.jwt-secret}")
     private String secretKey;
 
-    @Value("${app.jwt-expiration-milliseconds}")
+    @Value("${app.jwt-expiration-milliseconds}") // 30분
     private long jwtExpirationDate;
 
-    @Value("${app.refresh-token-expiration-milliseconds}")
+    @Value("${app.refresh-token-expiration-milliseconds}") // 10일
     private long jwtRefreshExpirationMs;
 
+    @Autowired
+    private RedisTokenDao redisTokenDao;
 
     private SecretKey key;
+
 
     @PostConstruct
     public void init() {
@@ -68,6 +76,10 @@ public class JwtProvider {
                 .signWith(key,SignatureAlgorithm.HS256)
                 .compact();
 
+        // redis에 refresh token 저장
+        String redisKey= "refresh-token-"+userName;
+        redisTokenDao.setValue(redisKey,refreshToken, Duration.ofMillis(jwtRefreshExpirationMs));
+
 
         return JwtToken.builder()
                 .grantType("Bearer")
@@ -95,6 +107,7 @@ public class JwtProvider {
         } catch (IllegalArgumentException e) {
             log.info("JWT claims string is empty.", e);
         }
+
         return false;
     }
 
@@ -111,9 +124,8 @@ public class JwtProvider {
                 .map(SimpleGrantedAuthority::new) //문자열을 SimpleGrantedAuthority 객체로 변환
                 .collect(Collectors.toList()); //변환된 스트림을 다시 리스트로 모음
 
-//        UserDetails principal = new User(claims.getSubject(), "", authorities);
-//        return new UsernamePasswordAuthenticationToken(principal, "", authorities);
-        return  new UsernamePasswordAuthenticationToken(claims.get("userName"),claims.get("auth"), authorities);
+        UserDetails principal = new User(claims.getSubject(), "", authorities);
+        return new UsernamePasswordAuthenticationToken(principal, "", authorities);
     }
 
     // accessToken

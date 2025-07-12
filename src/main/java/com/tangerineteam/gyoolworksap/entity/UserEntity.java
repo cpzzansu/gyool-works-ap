@@ -32,4 +32,5 @@ public class UserEntity {
     @CollectionTable(name = "user_roles", joinColumns = @JoinColumn(name = "id"))
     @Column(name = "role")
     private List<String> roles = new ArrayList<>();
+
 }
