@@ -1,6 +1,8 @@
 package com.tangerineteam.gyoolworksap.config;
 
 
+import com.tangerineteam.gyoolworksap.dao.RedisTokenDao;
+import com.tangerineteam.gyoolworksap.security.CookieService;
 import com.tangerineteam.gyoolworksap.security.JwtAuthenticationFilter;
 import com.tangerineteam.gyoolworksap.security.JwtProvider;
 import lombok.RequiredArgsConstructor;
@@ -28,6 +30,10 @@ public class SecurityConfig {
 
     private final JwtProvider jwtProvider;
 
+    private final CookieService cookieService;
+
+    private final RedisTokenDao redisTokenDao;
+
     public static final String[] AUTH_WHITELIST = {
             "/login",
             "/user/**",
@@ -49,7 +55,7 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .cors(cors -> {})
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(AUTH_WHITELIST).permitAll()
@@ -63,7 +69,7 @@ public class SecurityConfig {
                         .logoutSuccessUrl("/")
                         .invalidateHttpSession(true)
                 )
-                .addFilterBefore(new JwtAuthenticationFilter(jwtProvider), UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(new JwtAuthenticationFilter(jwtProvider,cookieService,redisTokenDao), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

@@ -29,7 +29,7 @@ public class RedisTokenDao {
     }
 
     //데이터 조회
-    public Object getValue(String key){
+    public String getValue(String key){
         return values.get(key);
     }
 

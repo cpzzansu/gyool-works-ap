@@ -19,8 +19,6 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
-import java.security.Key;
-import java.time.Duration;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -36,9 +34,6 @@ public class JwtProvider {
 
     @Value("${app.refresh-token-expiration-milliseconds}") // 10일
     private long jwtRefreshExpirationMs;
-
-    @Autowired
-    private RedisTokenDao redisTokenDao;
 
     private SecretKey key;
 
@@ -75,10 +70,6 @@ public class JwtProvider {
                 .setExpiration(new Date(currentDate.getTime() + jwtRefreshExpirationMs))
                 .signWith(key,SignatureAlgorithm.HS256)
                 .compact();
-
-        // redis에 refresh token 저장
-        String redisKey= "refresh-token-"+userName;
-        redisTokenDao.setValue(redisKey,refreshToken, Duration.ofMillis(jwtRefreshExpirationMs));
 
 
         return JwtToken.builder()
@@ -139,5 +130,25 @@ public class JwtProvider {
         }catch (ExpiredJwtException e){
             return e.getClaims();
         }
+    }
+
+
+    public boolean isExpired(String token) {
+        try {
+            Claims claims = Jwts.parserBuilder()
+                    .setSigningKey(key)
+                    .build()
+                    .parseClaimsJws(token)
+                    .getBody();
+
+            Date expiration = claims.getExpiration();
+            return expiration.before(new Date()); // 만료됐으면 true
+        } catch (JwtException | IllegalArgumentException e) {
+            return true; // 파싱 자체가 실패해도 만료된 걸로 간주
+        }
+    }
+
+    public String getUsernameFromToken(String token) {
+        return parseClaims(token).getSubject(); // JWT의 "sub" 필드 = username
     }
 }

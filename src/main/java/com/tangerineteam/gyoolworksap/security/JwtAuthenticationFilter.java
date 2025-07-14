@@ -1,23 +1,46 @@
 package com.tangerineteam.gyoolworksap.security;
 
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tangerineteam.gyoolworksap.common.ErrorResponse;
+import com.tangerineteam.gyoolworksap.common.ResponseMassege;
+import com.tangerineteam.gyoolworksap.dao.RedisTokenDao;
+import com.tangerineteam.gyoolworksap.dto.JwtToken;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.time.Duration;
 
+
+@Slf4j
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     //토큰 생성/검증/authentication 변환등 로직 담당
     private final JwtProvider jwtProvider;
+
+    //refresh 관련 Cookie service
+    private final CookieService cookieService;
+
+    //redis 관련
+    private final RedisTokenDao redisTokenDao;
+
+    @Value("${token.redis.prename}")
+    private String prename;
+
+    @Value("${app.refresh-token-expiration-milliseconds}")
+    private long refreshTokenExpirationMilliseconds;
 
     //요청마다 실행되지만 OncePerRequestFilter에의해
     @Override
@@ -36,9 +59,45 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             //SecurityContext에 저장
             SecurityContextHolder.getContext().setAuthentication(authentication);
         }
-        // 유효하지 않으면 401
-        filterChain.doFilter(request, response);
 
+        //2-1. 토큰이 만료된경우 refresh 토큰 확인 후 재발급
+        else if(token != null && jwtProvider.isExpired(token)) {
+            //cookie에서 refresh 토큰 가져오기
+            String refreshToken = cookieService.getRefreshTokenCookie(request);
+            String id = jwtProvider.getUsernameFromToken(refreshToken);
+            String redisKey= prename+id;
+
+            //redis에서 refresh 토큰 가져오기
+            String  refreshTokenRedis  = redisTokenDao.getValue(redisKey);
+
+            //refresh 만료 or 탈취 or 로그아웃
+            if(refreshTokenRedis ==null || !refreshTokenRedis.equals(refreshToken)) {
+                cookieService.deleteCookie(response);
+                redisTokenDao.delete(redisKey);
+                SecurityContextHolder.clearContext();
+                sendErrorResponse(response, ResponseMassege.LOGGED_OUT); // 프론트는 여기서 로그인 페이지로 리디렉션
+                return;
+            }
+
+
+            //access token 재발급
+            Authentication authentication = jwtProvider.getAuthentication(refreshToken);
+            JwtToken newToken = jwtProvider.generateToken(authentication);
+
+            String newAccessToken = newToken.getAccessToken();
+            String newRefreshToken = newToken.getRefreshToken();
+
+            cookieService.addCookie(response,newRefreshToken);
+            redisTokenDao.setValue(redisKey,newRefreshToken,  Duration.ofMillis(refreshTokenExpirationMilliseconds));
+
+            response.setHeader("Authorization", "Bearer " + newAccessToken);
+
+            log.info("reissued token Uesr ID ==== >{}",id);
+
+            // SecurityContext 갱신
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+        }
+        filterChain.doFilter(request, response);
     }
 
     /*
@@ -53,5 +112,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         return null;
+    }
+
+
+    private void sendErrorResponse(HttpServletResponse response, ResponseMassege rm) throws IOException {
+        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED); // 401
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+
+        ErrorResponse error = new ErrorResponse(rm);
+        String json = new ObjectMapper().writeValueAsString(error);
+
+        response.getWriter().write(json); // JSON 응답 본문에 쓰기
     }
 }
