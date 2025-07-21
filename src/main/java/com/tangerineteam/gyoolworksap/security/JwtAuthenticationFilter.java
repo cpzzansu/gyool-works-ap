@@ -6,6 +6,7 @@ import com.tangerineteam.gyoolworksap.common.ErrorResponse;
 import com.tangerineteam.gyoolworksap.common.ResponseMassege;
 import com.tangerineteam.gyoolworksap.dao.RedisTokenDao;
 import com.tangerineteam.gyoolworksap.dto.JwtToken;
+import com.tangerineteam.gyoolworksap.service.UserService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -14,8 +15,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -24,20 +27,34 @@ import java.time.Duration;
 
 
 @Slf4j
-@RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
-    //토큰 생성/검증/authentication 변환등 로직 담당
+//    //토큰 생성/검증/authentication 변환등 로직 담당
+//    private final JwtProvider jwtProvider;
+//
+//    //refresh 관련 Cookie service
+//    private final CookieService cookieService;
+//
+//    //redis 관련
+//    private final RedisTokenDao redisTokenDao;;
+
+
     private final JwtProvider jwtProvider;
-
-    //refresh 관련 Cookie service
     private final CookieService cookieService;
-
-    //redis 관련
     private final RedisTokenDao redisTokenDao;
+    private final CustomerDetailService customerDetailService;
 
-    @Value("${token.redis.prename}")
-    private String prename;
+    public JwtAuthenticationFilter(
+            JwtProvider jwtProvider,
+            CookieService cookieService,
+            RedisTokenDao redisTokenDao,
+            CustomerDetailService customerDetailService
+    ) {
+        this.jwtProvider = jwtProvider;
+        this.cookieService = cookieService;
+        this.redisTokenDao = redisTokenDao;
+        this.customerDetailService = customerDetailService;
+    }
 
     @Value("${app.refresh-token-expiration-milliseconds}")
     private long refreshTokenExpirationMilliseconds;
@@ -51,53 +68,63 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         //1. Authorizarion 헤더에서 토큰값 추출
         String token = resolveToken(request);
-
-        //2. 토큰이 존재하고 유효 하면
-        if( token != null && jwtProvider.validateToken(token) ) {
-            //인증 정보 생성
-            Authentication authentication = jwtProvider.getAuthentication(token);
-            //SecurityContext에 저장
-            SecurityContextHolder.getContext().setAuthentication(authentication);
-        }
-
-        //2-1. 토큰이 만료된경우 refresh 토큰 확인 후 재발급
-        else if(token != null && jwtProvider.isExpired(token)) {
-            //cookie에서 refresh 토큰 가져오기
-            String refreshToken = cookieService.getRefreshTokenCookie(request);
-            String id = jwtProvider.getUsernameFromToken(refreshToken);
-            String redisKey= prename+id;
-
-            //redis에서 refresh 토큰 가져오기
-            String  refreshTokenRedis  = redisTokenDao.getValue(redisKey);
-
-            //refresh 만료 or 탈취 or 로그아웃
-            if(refreshTokenRedis ==null || !refreshTokenRedis.equals(refreshToken)) {
-                cookieService.deleteCookie(response);
-                redisTokenDao.delete(redisKey);
-                SecurityContextHolder.clearContext();
-                sendErrorResponse(response, ResponseMassege.LOGGED_OUT); // 프론트는 여기서 로그인 페이지로 리디렉션
-                return;
+        try {
+            //2. 토큰이 존재하고 유효 하면
+            if( token != null && jwtProvider.validateToken(token) ) {
+                //인증 정보 생성
+                Authentication authentication = jwtProvider.getAuthentication(token);
+                //SecurityContext에 저장
+                SecurityContextHolder.getContext().setAuthentication(authentication);
             }
 
+            //2-1. 토큰이 만료된경우 refresh 토큰 확인 후 재발급
+            else if(token != null && jwtProvider.isExpired(token)) {
+                //cookie에서 refresh 토큰 가져오기
+                String refreshToken = cookieService.getRefreshTokenCookie(request);
+                String id = jwtProvider.getUsernameFromToken(refreshToken);
+                String redisKey= "refresh-token-"+id;
 
-            //access token 재발급
-            Authentication authentication = jwtProvider.getAuthentication(refreshToken);
-            JwtToken newToken = jwtProvider.generateToken(authentication);
+                //redis에서 refresh 토큰 가져오기
+                String  refreshTokenRedis  = redisTokenDao.getValue(redisKey);
 
-            String newAccessToken = newToken.getAccessToken();
-            String newRefreshToken = newToken.getRefreshToken();
+                //refresh 만료 or 탈취 or 로그아웃
+                if(refreshTokenRedis ==null || !refreshTokenRedis.equals(refreshToken)) {
+                    cookieService.deleteCookie(response);
+                    redisTokenDao.delete(redisKey);
+                    SecurityContextHolder.clearContext();
+                    sendErrorResponse(response, ResponseMassege.LOGGED_OUT); // 프론트는 여기서 로그인 페이지로 리디렉션
+                    return;
+                }
 
-            cookieService.addCookie(response,newRefreshToken);
-            redisTokenDao.setValue(redisKey,newRefreshToken,  Duration.ofMillis(refreshTokenExpirationMilliseconds));
+                // refresh로
+                //access token 재발급
+                String userId =  jwtProvider.getUsernameFromToken(refreshToken);
+                UserDetails userDetails = customerDetailService.loadUserByUsername(userId);
 
-            response.setHeader("Authorization", "Bearer " + newAccessToken);
+                Authentication authentication =
+                        new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
 
-            log.info("reissued token Uesr ID ==== >{}",id);
+                // 새 Access Token 발급해서 응답 헤더에 실어주기
+                JwtToken newToken = jwtProvider.generateToken(authentication);
 
-            // SecurityContext 갱신
-            SecurityContextHolder.getContext().setAuthentication(authentication);
+                String newAccessToken = newToken.getAccessToken();
+                String newRefreshToken = newToken.getRefreshToken();
+
+                cookieService.addCookie(response,newRefreshToken);
+                redisTokenDao.setValue(redisKey,newRefreshToken,  Duration.ofMillis(refreshTokenExpirationMilliseconds));
+
+                response.setHeader("Authorization", "Bearer " + newAccessToken);
+
+                log.info("reissued token Uesr ID ==== >{}",id);
+
+                // SecurityContext 갱신
+                SecurityContextHolder.getContext().setAuthentication(authentication);
+            }
+            filterChain.doFilter(request, response);
+        }catch (Exception ex){
+            log.error("Exception in JwtAuthenticationFilter ",ex);
         }
-        filterChain.doFilter(request, response);
+
     }
 
     /*

@@ -9,17 +9,16 @@ import com.tangerineteam.gyoolworksap.dto.UserInfo;
 import com.tangerineteam.gyoolworksap.entity.UserEntity;
 import com.tangerineteam.gyoolworksap.repository.UserRepository;
 import com.tangerineteam.gyoolworksap.security.CookieService;
+import com.tangerineteam.gyoolworksap.security.JwtProvider;
 import com.tangerineteam.gyoolworksap.service.UserService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.time.Duration;
 import java.util.HashMap;
@@ -42,6 +41,9 @@ public class LoginController {
 
     @Autowired
     private CookieService cookieService;
+
+    @Autowired
+    private JwtProvider jwtProvider;
 
 
     @Value("${app.refresh-token-expiration-milliseconds}") // 10일
@@ -89,5 +91,29 @@ public class LoginController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorResponse(ResponseMassege.BAD_CREDENTIALS));
         }
 
+    }
+
+    @GetMapping("/logout")
+    public ResponseEntity<?> logout(HttpServletRequest request,HttpServletResponse response) {
+        //1. 쿠키에서 refresh토큰 조회
+        String refreshToken = cookieService.getRefreshTokenCookie(request);
+
+        if(refreshToken != null){
+            String userId = jwtProvider.getUsernameFromToken(refreshToken);
+
+            //2. 레디스 키로 토큰 삭제
+            String redisKey= prename+userId;
+            redisTokenDao.delete(redisKey);
+        }
+        //3. 쿠키에서 refresh 삭제
+        cookieService.deleteCookie(response);
+
+
+        return ResponseEntity.ok(true);
+    }
+
+    @GetMapping("/isExpired")
+    public ResponseEntity<?> isExpired(HttpServletRequest request,HttpServletResponse response) {
+        return ResponseEntity.status(200).body(true);
     }
 }

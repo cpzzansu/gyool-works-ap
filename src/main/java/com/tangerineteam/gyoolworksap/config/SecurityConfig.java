@@ -3,6 +3,7 @@ package com.tangerineteam.gyoolworksap.config;
 
 import com.tangerineteam.gyoolworksap.dao.RedisTokenDao;
 import com.tangerineteam.gyoolworksap.security.CookieService;
+import com.tangerineteam.gyoolworksap.security.CustomerDetailService;
 import com.tangerineteam.gyoolworksap.security.JwtAuthenticationFilter;
 import com.tangerineteam.gyoolworksap.security.JwtProvider;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +35,12 @@ public class SecurityConfig {
 
     private final RedisTokenDao redisTokenDao;
 
+
+    @Bean
+    public JwtAuthenticationFilter jwtAuthenticationFilter(CustomerDetailService customerDetailService) {
+        return new JwtAuthenticationFilter(jwtProvider, cookieService, redisTokenDao, customerDetailService);
+    }
+
     public static final String[] AUTH_WHITELIST = {
             "/login",
             "/user/**",
@@ -53,7 +60,7 @@ public class SecurityConfig {
     };
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http,JwtAuthenticationFilter jwtAuthenticationFilter) throws Exception {
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
@@ -64,12 +71,8 @@ public class SecurityConfig {
                 .sessionManagement(session -> session
                     .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
-                .logout( logout -> logout
-                        .logoutUrl("/logout")
-                        .logoutSuccessUrl("/")
-                        .invalidateHttpSession(true)
-                )
-                .addFilterBefore(new JwtAuthenticationFilter(jwtProvider,cookieService,redisTokenDao), UsernamePasswordAuthenticationFilter.class);
+                .logout(logout -> logout.disable())
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

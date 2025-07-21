@@ -68,6 +68,7 @@ public class JwtProvider {
         //refresh token 생성
         String refreshToken = Jwts.builder()
                 .setExpiration(new Date(currentDate.getTime() + jwtRefreshExpirationMs))
+                .setSubject(userName)
                 .signWith(key,SignatureAlgorithm.HS256)
                 .compact();
 
@@ -149,6 +150,6 @@ public class JwtProvider {
     }
 
     public String getUsernameFromToken(String token) {
-        return parseClaims(token).getSubject(); // JWT의 "sub" 필드 = username
+        return parseClaims(token).getSubject();
     }
 }

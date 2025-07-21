@@ -5,6 +5,7 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Service;
 
@@ -22,16 +23,14 @@ public class CookieService {
 
     //  쿠키에 refresh 토큰 저장
     public void addCookie(HttpServletResponse response, String refreshToken) {
-
         ResponseCookie cookie = ResponseCookie.from(refreshTokenCookieName, refreshToken)
                 .httpOnly(true)
-                .secure(false)
+                .secure(false) // ✅ 개발환경에서는 false, 배포 시 true
                 .path("/")
-                .maxAge(Duration.ofMillis(jwtRefreshExpirationMs)) // ⏱ ms 단위
-                .sameSite("None")
+                .maxAge(Duration.ofMillis(jwtRefreshExpirationMs))
+                .sameSite("Lax") // ✅ SameSite=Lax 설정
                 .build();
-
-        response.setHeader("Set-Cookie", cookie.toString());
+        response.setHeader(HttpHeaders.SET_COOKIE, cookie.toString());
 
     }
 
