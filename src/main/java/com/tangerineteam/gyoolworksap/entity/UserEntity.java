@@ -28,6 +28,15 @@ public class UserEntity {
     @Column
     private String email;
 
+    @Column
+    private String auth;
+
+    @Column
+    private String approvalStatus;
+
+    @Column
+    private String companyId;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "user_roles", joinColumns = @JoinColumn(name = "id"))
     @Column(name = "role")

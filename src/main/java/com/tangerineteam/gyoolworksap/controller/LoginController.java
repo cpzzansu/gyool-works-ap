@@ -76,6 +76,9 @@ public class LoginController {
                     .id(userEntity.getId())
                     .name(userEntity.getName())
                     .email(userEntity.getEmail())
+                    .auth(userEntity.getAuth())
+                    .approvalStatus(userEntity.getApprovalStatus())
+                    .companyId(userEntity.getCompanyId())
                     .role(String.join(",", userEntity.getRoles()))
                     .build();
 
