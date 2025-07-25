@@ -1,47 +1,92 @@
 package com.tangerineteam.gyoolworksap.config;
 
 
+import com.tangerineteam.gyoolworksap.dao.RedisTokenDao;
+import com.tangerineteam.gyoolworksap.security.CookieService;
+import com.tangerineteam.gyoolworksap.security.CustomerDetailService;
+import com.tangerineteam.gyoolworksap.security.JwtAuthenticationFilter;
+import com.tangerineteam.gyoolworksap.security.JwtProvider;
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpStatus;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.factory.PasswordEncoderFactories;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
 
-import static org.springframework.security.config.Customizer.withDefaults;
-
 @Configuration
 @EnableWebSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
 
+    private final JwtProvider jwtProvider;
+
+    private final CookieService cookieService;
+
+    private final RedisTokenDao redisTokenDao;
+
+
+    @Bean
+    public JwtAuthenticationFilter jwtAuthenticationFilter(CustomerDetailService customerDetailService) {
+        return new JwtAuthenticationFilter(jwtProvider, cookieService, redisTokenDao, customerDetailService);
+    }
+
     public static final String[] AUTH_WHITELIST = {
-            "/login"
+            "/login",
+            "/user/**",
+            "/",
+            "/favicon.ico",
+            "/static/**",  // 정적 리소스 경로
+            "/index.html", // React 애플리케이션의 진입점
+            "/**/*.js",    // JavaScript 파일
+            "/**/*.css",   // CSS 파일
+            "/**/*.png",   // 이미지 파일
+            "/**/*.jpg",
+            "/**/*.jpeg",
+            "/**/*.gif",
+            "/**/*.svg",
+            "/**/*.ico",
+            "/**/*.html"
     };
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http,JwtAuthenticationFilter jwtAuthenticationFilter) throws Exception {
         http
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(AUTH_WHITELIST).permitAll()
-                        .anyRequest().authenticated())
-                .exceptionHandling(exception -> exception
-                        .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
+                        .anyRequest().authenticated()
+                )
                 .sessionManagement(session -> session
-                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .cors(withDefaults());
-
+                    .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                )
+                .logout(logout -> logout.disable())
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
 
+    @Bean
+    public AuthenticationManager authenticationManagerBean(AuthenticationConfiguration config) throws Exception {
+        return config.getAuthenticationManager();
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        // BCrypt Encoder 사용
+        return PasswordEncoderFactories.createDelegatingPasswordEncoder();
+    }
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
@@ -49,7 +94,7 @@ public class SecurityConfig {
         config.setAllowedOrigins(List.of("http://localhost:3000")); // ⬅️ 반드시 origin 명시
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
-        config.setAllowCredentials(true); // ⬅️ withCredentials 사용 시 필수
+        config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
