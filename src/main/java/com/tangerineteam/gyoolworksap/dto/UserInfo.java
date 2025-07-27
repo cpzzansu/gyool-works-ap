@@ -18,6 +18,6 @@ public class UserInfo {
     private String confirmNum;
     private String auth;
     private String approvalStatus;
-    private String companyId;
+    private Long companyId;
 
 }

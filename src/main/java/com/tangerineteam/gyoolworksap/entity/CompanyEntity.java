@@ -18,7 +18,8 @@ import java.util.List;
 @Table(name = "company")
 public class CompanyEntity {
     @Id
-    private String companyId;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long companyId;
 
     @Column
     private String businessNum;
@@ -30,7 +31,7 @@ public class CompanyEntity {
     private String companyName;
 
     @Column
-    private Date openDate;
+    private String openDate;
 
     @Column
     private Date registerDate;

@@ -35,7 +35,7 @@ public class UserEntity {
     private String approvalStatus;
 
     @Column
-    private String companyId;
+    private Long companyId;
 
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "user_roles", joinColumns = @JoinColumn(name = "id"))

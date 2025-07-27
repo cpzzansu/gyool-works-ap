@@ -11,11 +11,11 @@ import java.util.Date;
 @Builder
 public class CompanyInfo {
 
-    private String companyId;
+    private Long companyId;
     private String businessNum;
     private String ceoName;
     private String companyName;
-    private Date openDate;
+    private String openDate;
     private Date registerDate;
 
 }
